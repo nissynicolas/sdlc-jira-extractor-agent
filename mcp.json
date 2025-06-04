@@ -1,0 +1,55 @@
+{
+    "name": "Jira MCP Server",
+    "version": "1.0.0",
+    "description": "MCP server for Jira integration",
+    "server": {
+        "command": "python",
+        "args": ["jira_server.py"],
+        "env": {
+            "PYTHONPATH": "${workspaceFolder}"
+        }
+    },
+    "tools": [
+        {
+            "name": "get_issue",
+            "description": "Get details of a specific Jira issue",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "issue_key": {
+                        "type": "string",
+                        "description": "The Jira issue key (e.g., PROJ-123)"
+                    }
+                },
+                "required": ["issue_key"]
+            }
+        },
+        {
+            "name": "search_issues",
+            "description": "Search for issues using JQL",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "jql": {
+                        "type": "string",
+                        "description": "Jira Query Language string"
+                    }
+                },
+                "required": ["jql"]
+            }
+        },
+        {
+            "name": "get_my_issues",
+            "description": "Get issues assigned to the current user",
+            "inputSchema": {
+                "type": "object",
+                "properties": {}
+            }
+        }
+    ],
+    "settings": {
+        "envFile": ".env",
+        "pythonPath": "${workspaceFolder}/.venv/Scripts/python",
+        "logLevel": "info"
+    }
+} 
