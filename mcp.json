@@ -6,7 +6,10 @@
         "command": "python",
         "args": ["jira_server.py"],
         "env": {
-            "PYTHONPATH": "${workspaceFolder}"
+            "PYTHONPATH": "${workspaceFolder}",
+            "JIRA_SERVER": "your-jira-server.atlassian.net",
+            "JIRA_EMAIL": "your-email@example.com",
+            "JIRA_API_TOKEN": "your-api-token"
         }
     },
     "tools": [
@@ -44,6 +47,20 @@
             "inputSchema": {
                 "type": "object",
                 "properties": {}
+            }
+        },
+        {
+            "name": "get_acceptance_criteria",
+            "description": "Get acceptance criteria for a specific Jira issue from customfield_10127",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "issue_key": {
+                        "type": "string",
+                        "description": "The Jira issue key (e.g., PROJ-123)"
+                    }
+                },
+                "required": ["issue_key"]
             }
         }
     ],
