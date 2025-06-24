@@ -6,19 +6,25 @@ from anthropic import Anthropic
 from dotenv import load_dotenv
 from mcp import ClientSession
 from mcp.client.sse import sse_client
+import os
 
 load_dotenv()  # Load environment variables from .env
 
 class MCPClient:
-    def __init__(self, server_url: str = "http://localhost:8000"):
+    def __init__(self, server_url: str = "http://localhost:8000", email: str = None):
         self.server_url = server_url
         self.session: Optional[ClientSession] = None
         self.exit_stack = AsyncExitStack()
         self.anthropic = Anthropic()
+        self.email = None  # Always prompt user, never use env or arg
 
     async def connect(self):
-        # Connect to the MCP server using SSE transport
-        self.sse_ctx = sse_client(f"{self.server_url}/sse")
+        # Always prompt the user for their Jira email
+        self.email = input("Please enter your Jira email: ")
+        if not self.email:
+            raise ValueError("Email must be provided by user input.")
+        # Connect to the MCP server using SSE transport, passing email as query param
+        self.sse_ctx = sse_client(f"{self.server_url}/sse?email={self.email}")
         self.sse = await self.exit_stack.enter_async_context(self.sse_ctx)
         self.session = await self.exit_stack.enter_async_context(ClientSession(*self.sse))
         await self.session.initialize()
@@ -104,8 +110,9 @@ async def main():
     import argparse
     parser = argparse.ArgumentParser(description='MCP Client Chatbot')
     parser.add_argument('--server', default='http://localhost:8000', help='MCP server URL')
+    parser.add_argument('--email', default=None, help='Jira user email (or set JIRA_EMAIL env var)')
     args = parser.parse_args()
-    client = MCPClient(server_url=args.server)
+    client = MCPClient(server_url=args.server, email=args.email)
     try:
         await client.connect()
         await client.chat_loop()

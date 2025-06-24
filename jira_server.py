@@ -10,18 +10,27 @@ import os
 import json
 import uuid
 
-# Helper to get Jira client per request/session
-def get_jira_client():
+# Helper to get Jira client per request/session, using email to look up token
+def get_jira_client(email: str):
     jira_server = os.getenv('JIRA_SERVER', '')
-    jira_email = os.getenv('JIRA_EMAIL', '')
-    jira_api_token = os.getenv('JIRA_API_TOKEN', '')
     if not jira_server:
         raise ValueError("JIRA_SERVER environment variable is required")
-    if not jira_email:
-        raise ValueError("JIRA_EMAIL environment variable is required")
-    if not jira_api_token:
-        raise ValueError("JIRA_API_TOKEN environment variable is required")
-    return JIRA(server=jira_server, basic_auth=(jira_email, jira_api_token))
+    jira_details_json = os.getenv('jira_details', '')
+    if not jira_details_json:
+        raise ValueError("jira_details environment variable is required")
+    try:
+        details = json.loads(jira_details_json)
+        if isinstance(details, dict):
+            details = [details]
+    except Exception as e:
+        raise ValueError(f"Invalid jira_details JSON: {str(e)}")
+    match = next((d for d in details if d.get('jira_email') == email), None)
+    if not match:
+        raise ValueError(f"No jira_token found for email {email}")
+    jira_token = match.get('jira_token')
+    if not jira_token:
+        raise ValueError(f"No jira_token found for email {email}")
+    return JIRA(server=jira_server, basic_auth=(email, jira_token))
 
 # Remove global credential validation and global jira client initialization
 
@@ -68,18 +77,19 @@ class JiraMCP(FastMCP):
         super().__init__("Jira MCP Server")
         
         @self.tool("get_issue")
-        async def get_issue(issue_key: str) -> Dict[str, Any]:
+        async def get_issue(issue_key: str, email: str) -> Dict[str, Any]:
             """
             Get details of a specific Jira issue.
             
             Args:
                 issue_key: The Jira issue key (e.g., PROJ-123)
+                email: The Jira user email
                 
             Returns:
                 Issue details if found
             """
             try:
-                jira = get_jira_client()
+                jira = get_jira_client(email)
                 issue = jira.issue(issue_key)
                 return {
                     "key": issue.key,
@@ -101,18 +111,19 @@ class JiraMCP(FastMCP):
                 }
         
         @self.tool("search_issues")
-        async def search_issues(jql: str) -> List[Dict[str, Any]]:
+        async def search_issues(jql: str, email: str) -> List[Dict[str, Any]]:
             """
             Search for Jira issues using JQL.
             
             Args:
                 jql: Jira Query Language string
+                email: The Jira user email
                 
             Returns:
                 List of matching issues
             """
             try:
-                jira = get_jira_client()
+                jira = get_jira_client(email)
                 issues = jira.search_issues(jql, maxResults=50)
                 return [{
                     "key": issue.key,
@@ -134,7 +145,7 @@ class JiraMCP(FastMCP):
                 }]
         
         @self.tool("get_my_issues")
-        async def get_my_issues() -> List[Dict[str, Any]]:
+        async def get_my_issues(email: str) -> List[Dict[str, Any]]:
             """
             Get issues assigned to the current user.
             
@@ -142,7 +153,7 @@ class JiraMCP(FastMCP):
                 List of issues assigned to the current user
             """
             try:
-                jira = get_jira_client()
+                jira = get_jira_client(email)
                 jql = f'assignee = currentUser() ORDER BY created DESC'
                 issues = jira.search_issues(jql, maxResults=50)
                 return [{
@@ -165,18 +176,19 @@ class JiraMCP(FastMCP):
                 }]
 
         @self.tool("get_acceptance_criteria")
-        async def get_acceptance_criteria(issue_key: str) -> Dict[str, Any]:
+        async def get_acceptance_criteria(issue_key: str, email: str) -> Dict[str, Any]:
             """
             Get acceptance criteria for a specific Jira issue from customfield_10127.
             
             Args:
                 issue_key: The Jira issue key (e.g., PROJ-123)
+                email: The Jira user email
                 
             Returns:
                 Acceptance criteria details if found
             """
             try:
-                jira = get_jira_client()
+                jira = get_jira_client(email)
                 issue = jira.issue(issue_key)
                 ac = extract_acceptance_criteria(issue)
                 
@@ -199,6 +211,15 @@ def create_sse_server(mcp: JiraMCP):
 
     # Define handler functions
     async def handle_sse(request):
+        # Parse email from query string
+        email = request.query_params.get('email')
+        if not email:
+            from starlette.responses import JSONResponse
+            return JSONResponse({"error": "Missing email in query string"}, status_code=400)
+
+        # Attach email to the MCP instance for use in tool calls (if needed)
+        mcp._current_email = email
+
         async with transport.connect_sse(
             request.scope, request.receive, request._send
         ) as streams:
