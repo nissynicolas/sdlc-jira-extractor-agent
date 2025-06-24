@@ -7,25 +7,23 @@ from pydantic import BaseModel
 from typing import List, Optional, Dict, Any
 from jira import JIRA
 import os
-from dotenv import load_dotenv
 import json
 import uuid
 
-load_dotenv()  # Load environment variables
+# Helper to get Jira client per request/session
+def get_jira_client():
+    jira_server = os.getenv('JIRA_SERVER', '')
+    jira_email = os.getenv('JIRA_EMAIL', '')
+    jira_api_token = os.getenv('JIRA_API_TOKEN', '')
+    if not jira_server:
+        raise ValueError("JIRA_SERVER environment variable is required")
+    if not jira_email:
+        raise ValueError("JIRA_EMAIL environment variable is required")
+    if not jira_api_token:
+        raise ValueError("JIRA_API_TOKEN environment variable is required")
+    return JIRA(server=jira_server, basic_auth=(jira_email, jira_api_token))
 
-# Initialize Jira client with proper URL formatting
-jira_server = os.getenv('JIRA_SERVER', '')
-if not jira_server.startswith('http'):
-    jira_server = f'https://{jira_server}'
-
-try:
-    jira = JIRA(
-        server=jira_server,
-        basic_auth=(os.getenv('JIRA_EMAIL'), os.getenv('JIRA_API_TOKEN'))
-    )
-except Exception as e:
-    print(f"Failed to connect to Jira: {str(e)}")
-    raise
+# Remove global credential validation and global jira client initialization
 
 class Issue(BaseModel):
     key: str
@@ -37,6 +35,31 @@ class Issue(BaseModel):
     issuetype: Optional[str] = None
     priority: Optional[str] = None
     sprint: Optional[str] = None
+    acceptance_criteria: Optional[str] = None
+
+def extract_acceptance_criteria(issue) -> Optional[str]:
+    """
+    Extract acceptance criteria from customfield_10127.
+    """
+    try:
+        if hasattr(issue.fields, 'customfield_10127'):
+            ac_field = issue.fields.customfield_10127
+            if ac_field:
+                # Handle different field value formats
+                if isinstance(ac_field, str):
+                    return ac_field.strip()
+                elif hasattr(ac_field, 'content'):
+                    # Handle structured content
+                    if isinstance(ac_field.content, list):
+                        return '\n'.join([str(item) for item in ac_field.content if item])
+                    else:
+                        return str(ac_field.content)
+                else:
+                    return str(ac_field).strip()
+        return None
+    except Exception as e:
+        print(f"Error extracting acceptance criteria: {str(e)}")
+        return None
 
 class JiraMCP(FastMCP):
     """Custom MCP server for Jira functionality"""
@@ -56,6 +79,7 @@ class JiraMCP(FastMCP):
                 Issue details if found
             """
             try:
+                jira = get_jira_client()
                 issue = jira.issue(issue_key)
                 return {
                     "key": issue.key,
@@ -67,6 +91,7 @@ class JiraMCP(FastMCP):
                     "issuetype": issue.fields.issuetype.name,
                     "priority": issue.fields.priority.name if issue.fields.priority else None,
                     "sprint": issue.fields.customfield_10020[0].name if hasattr(issue.fields, 'customfield_10020') and issue.fields.customfield_10020 else None,
+                    "acceptance_criteria": extract_acceptance_criteria(issue),
                     "success": True
                 }
             except Exception as e:
@@ -87,6 +112,7 @@ class JiraMCP(FastMCP):
                 List of matching issues
             """
             try:
+                jira = get_jira_client()
                 issues = jira.search_issues(jql, maxResults=50)
                 return [{
                     "key": issue.key,
@@ -98,6 +124,7 @@ class JiraMCP(FastMCP):
                     "issuetype": issue.fields.issuetype.name,
                     "priority": issue.fields.priority.name if issue.fields.priority else None,
                     "sprint": issue.fields.customfield_10020[0].name if hasattr(issue.fields, 'customfield_10020') and issue.fields.customfield_10020 else None,
+                    "acceptance_criteria": extract_acceptance_criteria(issue),
                     "success": True
                 } for issue in issues]
             except Exception as e:
@@ -115,6 +142,7 @@ class JiraMCP(FastMCP):
                 List of issues assigned to the current user
             """
             try:
+                jira = get_jira_client()
                 jql = f'assignee = currentUser() ORDER BY created DESC'
                 issues = jira.search_issues(jql, maxResults=50)
                 return [{
@@ -127,6 +155,7 @@ class JiraMCP(FastMCP):
                     "issuetype": issue.fields.issuetype.name,
                     "priority": issue.fields.priority.name if issue.fields.priority else None,
                     "sprint": issue.fields.customfield_10020[0].name if hasattr(issue.fields, 'customfield_10020') and issue.fields.customfield_10020 else None,
+                    "acceptance_criteria": extract_acceptance_criteria(issue),
                     "success": True
                 } for issue in issues]
             except Exception as e:
@@ -134,6 +163,35 @@ class JiraMCP(FastMCP):
                     "error": str(e),
                     "success": False
                 }]
+
+        @self.tool("get_acceptance_criteria")
+        async def get_acceptance_criteria(issue_key: str) -> Dict[str, Any]:
+            """
+            Get acceptance criteria for a specific Jira issue from customfield_10127.
+            
+            Args:
+                issue_key: The Jira issue key (e.g., PROJ-123)
+                
+            Returns:
+                Acceptance criteria details if found
+            """
+            try:
+                jira = get_jira_client()
+                issue = jira.issue(issue_key)
+                ac = extract_acceptance_criteria(issue)
+                
+                return {
+                    "issue_key": issue.key,
+                    "summary": issue.fields.summary,
+                    "acceptance_criteria": ac,
+                    "has_acceptance_criteria": ac is not None,
+                    "success": True
+                }
+            except Exception as e:
+                return {
+                    "error": str(e),
+                    "success": False
+                }
 
 def create_sse_server(mcp: JiraMCP):
     """Create a Starlette app that handles SSE connections and message handling"""

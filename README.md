@@ -15,12 +15,40 @@ source .venv/bin/activate  # On Windows: .venv\Scripts\activate
 pip install -r requirements.txt
 ```
 
-3. Create a `.env` file in the project root with your Jira credentials:
+## Configuration
+
+The Jira MCP server is now configurable through environment variables that can be set in your MCP server configuration. You have two options:
+
+### Option 1: Configure in MCP Server (Recommended)
+
+Update your MCP server configuration (e.g., in Cursor's `mcp.json` or your MCP client config) to include the Jira credentials:
+
+```json
+{
+  "mcpServers": {
+    "jiraServer": {
+      "command": "python",
+      "args": ["jira_server.py"],
+      "env": {
+        "JIRA_SERVER": "your-domain.atlassian.net",
+        "JIRA_EMAIL": "your-email@example.com",
+        "JIRA_API_TOKEN": "your-api-token"
+      }
+    }
+  }
+}
+```
+
+### Option 2: Use .env file (Fallback)
+
+Create a `.env` file in the project root with your Jira credentials:
 ```
 JIRA_SERVER=https://your-domain.atlassian.net
 JIRA_EMAIL=your-email@example.com
 JIRA_API_TOKEN=your-api-token
 ```
+
+### Getting Your Jira API Token
 
 To get your Jira API token:
 1. Go to https://id.atlassian.com/manage-profile/security/api-tokens
