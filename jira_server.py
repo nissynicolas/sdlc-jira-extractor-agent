@@ -7,38 +7,23 @@ from pydantic import BaseModel
 from typing import List, Optional, Dict, Any
 from jira import JIRA
 import os
-from dotenv import load_dotenv
 import json
 import uuid
 
-# Load environment variables from .env file as fallback
-load_dotenv()
+# Helper to get Jira client per request/session
+def get_jira_client():
+    jira_server = os.getenv('JIRA_SERVER', '')
+    jira_email = os.getenv('JIRA_EMAIL', '')
+    jira_api_token = os.getenv('JIRA_API_TOKEN', '')
+    if not jira_server:
+        raise ValueError("JIRA_SERVER environment variable is required")
+    if not jira_email:
+        raise ValueError("JIRA_EMAIL environment variable is required")
+    if not jira_api_token:
+        raise ValueError("JIRA_API_TOKEN environment variable is required")
+    return JIRA(server=jira_server, basic_auth=(jira_email, jira_api_token))
 
-# Get Jira configuration from environment variables (can be set by MCP server)
-jira_server = os.getenv('JIRA_SERVER', '')
-jira_email = os.getenv('JIRA_EMAIL', '')
-jira_api_token = os.getenv('JIRA_API_TOKEN', '')
-
-# Validate required environment variables
-if not jira_server:
-    raise ValueError("JIRA_SERVER environment variable is required")
-if not jira_email:
-    raise ValueError("JIRA_EMAIL environment variable is required")
-if not jira_api_token:
-    raise ValueError("JIRA_API_TOKEN environment variable is required")
-
-# Initialize Jira client with proper URL formatting
-if not jira_server.startswith('http'):
-    jira_server = f'https://{jira_server}'
-
-try:
-    jira = JIRA(
-        server=jira_server,
-        basic_auth=(jira_email, jira_api_token)
-    )
-except Exception as e:
-    print(f"Failed to connect to Jira: {str(e)}")
-    raise
+# Remove global credential validation and global jira client initialization
 
 class Issue(BaseModel):
     key: str
@@ -94,6 +79,7 @@ class JiraMCP(FastMCP):
                 Issue details if found
             """
             try:
+                jira = get_jira_client()
                 issue = jira.issue(issue_key)
                 return {
                     "key": issue.key,
@@ -126,6 +112,7 @@ class JiraMCP(FastMCP):
                 List of matching issues
             """
             try:
+                jira = get_jira_client()
                 issues = jira.search_issues(jql, maxResults=50)
                 return [{
                     "key": issue.key,
@@ -155,6 +142,7 @@ class JiraMCP(FastMCP):
                 List of issues assigned to the current user
             """
             try:
+                jira = get_jira_client()
                 jql = f'assignee = currentUser() ORDER BY created DESC'
                 issues = jira.search_issues(jql, maxResults=50)
                 return [{
@@ -188,6 +176,7 @@ class JiraMCP(FastMCP):
                 Acceptance criteria details if found
             """
             try:
+                jira = get_jira_client()
                 issue = jira.issue(issue_key)
                 ac = extract_acceptance_criteria(issue)
                 
