@@ -6,6 +6,7 @@ from starlette.routing import Mount, Route
 from pydantic import BaseModel
 from typing import List, Optional, Dict, Any
 from jira import JIRA
+from atlassian import Confluence
 import os
 import json
 import uuid
@@ -23,6 +24,22 @@ def get_jira_client():
         raise ValueError("JIRA_API_TOKEN environment variable is required")
     return JIRA(server=jira_server, basic_auth=(jira_email, jira_api_token))
 
+# Helper to get Confluence client per request/session
+def get_confluence_client():
+    confluence_server = os.getenv('JIRA_SERVER', '')
+    confluence_email = os.getenv('JIRA_EMAIL', '')
+    confluence_api_token = os.getenv('JIRA_API_TOKEN', '')
+    if not confluence_server:
+        raise ValueError("CONFLUENCE_SERVER environment variable is required")
+    if not confluence_email:
+        raise ValueError("CONFLUENCE_EMAIL environment variable is required")
+    if not confluence_api_token:
+        raise ValueError("CONFLUENCE_API_TOKEN environment variable is required")
+    return Confluence(
+        url=confluence_server,
+        username=confluence_email,
+        password=confluence_api_token
+    )
 # Remove global credential validation and global jira client initialization
 
 class Issue(BaseModel):
@@ -192,6 +209,32 @@ class JiraMCP(FastMCP):
                     "error": str(e),
                     "success": False
                 }
+
+        @self.tool("search_confluence_pages")
+        async def search_confluence_pages(cql: str) -> list:
+            """
+            Search Confluence pages using CQL (Confluence Query Language).
+            Args:
+                cql: CQL query string (e.g., 'type=page and text~"project"')
+            Returns:
+                List of matching pages with basic info
+            """
+            try:
+                confluence = get_confluence_client()
+                results = confluence.cql(cql, limit=20)
+                pages = []
+                for result in results.get('results', []):
+                    page = {
+                        "id": result.get('content', {}).get('id'),
+                        "title": result.get('title'),
+                        "url": confluence.url + "/pages/viewpage.action?pageId=" + str(result.get('content', {}).get('id')) if result.get('content', {}).get('id') else None,
+                        "space": result.get('space', {}).get('key'),
+                        "excerpt": result.get('excerpt'),
+                    }
+                    pages.append(page)
+                return pages
+            except Exception as e:
+                return [{"error": str(e)}]
 
 def create_sse_server(mcp: JiraMCP):
     """Create a Starlette app that handles SSE connections and message handling"""
