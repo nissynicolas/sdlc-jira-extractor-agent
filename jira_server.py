@@ -247,7 +247,7 @@ class JiraMCP(FastMCP):
             Create a new Jira issue using separate parameters for each field.
 
             Args:
-                project_key: Jira project key (e.g., "DVT")
+                project_key: Jira project key (e.g., "EDJ")
                 summary: Issue summary/title
                 description: Issue description
                 assignee: Assignee display name or email
@@ -261,7 +261,7 @@ class JiraMCP(FastMCP):
             try:
                 jira = get_jira_client()
                 fields = {
-                    "project": {"key": "DVT"},
+                    "project": {"key": "EDJ"},
                     "issuetype": {"name": "Task"},
                     "summary": summary,
                     "description": description,
