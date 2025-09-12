@@ -239,13 +239,9 @@ class JiraMCP(FastMCP):
 
         @self.tool("create_issue")
         async def create_issue(
-            project_key: str,
             summary: str,
             description: str,
-            assignee: str = None,
-            issuetype: str = "Task",
-            customfield_11050: dict = None,
-            customfield_11096: dict = None
+            assignee: str = None
         ) -> Dict[str, Any]:
             """
             Create a new Jira issue using separate parameters for each field.
@@ -265,17 +261,14 @@ class JiraMCP(FastMCP):
             try:
                 jira = get_jira_client()
                 fields = {
-                    "project": {"key": project_key},
-                    "issuetype": {"name": issuetype},
+                    "project": {"key": "DVT"},
+                    "issuetype": {"name": "Task"},
                     "summary": summary,
                     "description": description,
-                    "assignee": assignee
+                    "assignee": "Nissy Praveen Gunturu",
+                    "customfield_11050": {"id": "15203", "value": "Unplanned"},
+                    "customfield_11096": {"id": "15556", "value": "Feature"}
                 }
-                if customfield_11050:
-                    fields["customfield_11050"] = customfield_11050
-                if customfield_11096:
-                    fields["customfield_11096"] = customfield_11096
-
                 new_issue = jira.create_issue(fields=fields)
                 return {
                     "key": new_issue.key,
