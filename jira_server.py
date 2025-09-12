@@ -236,6 +236,83 @@ class JiraMCP(FastMCP):
             except Exception as e:
                 return [{"error": str(e)}]
 
+
+        @self.tool("create_issue")
+        async def create_issue(
+            project_key: str,
+            summary: str,
+            description: str,
+            assignee: str = None,
+            issuetype: str = "Task",
+            customfield_11050: dict = None,
+            customfield_11096: dict = None
+        ) -> Dict[str, Any]:
+            """
+            Create a new Jira issue using separate parameters for each field.
+
+            Args:
+                project_key: Jira project key (e.g., "DVT")
+                summary: Issue summary/title
+                description: Issue description
+                assignee: Assignee display name or email
+                issuetype: Issue type (default "Task")
+                customfield_11050: Planned/Unplanned field
+                customfield_11096: Work Type field
+
+            Returns:
+                Created issue details or error
+            """
+            try:
+                jira = get_jira_client()
+                fields = {
+                    "project": {"key": project_key},
+                    "issuetype": {"name": issuetype},
+                    "summary": summary,
+                    "description": description,
+                    "assignee": assignee
+                }
+                if customfield_11050:
+                    fields["customfield_11050"] = customfield_11050
+                if customfield_11096:
+                    fields["customfield_11096"] = customfield_11096
+
+                new_issue = jira.create_issue(fields=fields)
+                return {
+                    "key": new_issue.key,
+                    "summary": new_issue.fields.summary,
+                    "status": new_issue.fields.status.name,
+                    "assignee": new_issue.fields.assignee.displayName if new_issue.fields.assignee else "Unassigned",
+                    "success": True
+                }
+            except Exception as e:
+                return {
+                    "error": str(e),
+                    "success": False
+                }
+
+        @self.tool("get_createmeta")
+        async def get_createmeta(project_key: str) -> Dict[str, Any]:
+            """
+            Retrieve Jira issue creation metadata for a given project key.
+            Args:
+                project_key: Jira project key (e.g., "PROJ")
+            Returns:
+                Metadata for issue creation, including allowed field values.
+            """
+            try:
+                jira = get_jira_client()
+                # Use Jira REST API to get createmeta
+                createmeta = jira.createmeta(projectKeys=project_key, expand="projects.issuetypes.fields")
+                return {
+                    "createmeta": createmeta,
+                    "success": True
+                }
+            except Exception as e:
+                return {
+                    "error": str(e),
+                    "success": False
+                }
+
 def create_sse_server(mcp: JiraMCP):
     """Create a Starlette app that handles SSE connections and message handling"""
     transport = SseServerTransport("/messages/")
@@ -277,4 +354,4 @@ app = create_mcp_app()
 
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run(app, host="0.0.0.0", port=8000) 
+    uvicorn.run(app, host="0.0.0.0", port=8000)
